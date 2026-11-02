@@ -319,6 +319,8 @@ button.sel-card:active{transform:scale(.99)}
 .fld{display:block;margin:16px 0 0;font-weight:600;font-size:15px}
 .fld small{display:block;color:var(--mute);font-weight:400}
 .fld input,.fld select,.ta{display:block;width:100%;margin-top:6px;padding:12px 13px;border-radius:12px;border:1.5px solid var(--line2);background:var(--card)}
+.tsel{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:6px}
+.tsel select{min-width:0;margin:0;text-align:center;text-align-last:center}
 .fld input[type=time]{-webkit-appearance:none;appearance:none;min-width:0;max-width:100%;height:48px;line-height:1.2;text-align:left}
 .fld input[type=time]::-webkit-date-and-time-value{text-align:left;margin:0;min-height:1.2em}
 .fld input:focus,.ta:focus{border-color:var(--swim);outline:none;box-shadow:0 0 0 3px color-mix(in srgb,var(--swim) 22%,transparent)}
@@ -1807,7 +1809,14 @@ function pushPanel(){
   else if(env.perm==="denied")h+=note("Notifications are blocked for Raceplan. On iPhone open Settings, then Notifications, then Raceplan, and turn on Allow Notifications.");
   else{
     h+=note("Get a note each morning with today’s workout, on your training days.");
-    h+='<label class="fld" style="margin:12px 0 0">Reminder time<input id="rtime" type="time" data-f="rtime" value="'+esc(S.rtime)+'"></label>';
+    var tp=S.rtime.split(":").map(Number),h12=tp[0]%12||12,mins=[];
+    for(var mi=0;mi<60;mi+=5)mins.push(mi);
+    if(mins.indexOf(tp[1])<0){mins.push(tp[1]);mins.sort(function(a,b){return a-b})}
+    var opt=function(v,lab,on){return '<option value="'+v+'"'+(on?" selected":"")+'>'+lab+'</option>'};
+    h+='<div class="fld" style="margin:12px 0 0">Reminder time<div class="tsel">'+
+      '<select id="rt_h" data-f="rtime" aria-label="Hour">'+[1,2,3,4,5,6,7,8,9,10,11,12].map(function(x){return opt(x,x,x===h12)}).join("")+'</select>'+
+      '<select id="rt_m" data-f="rtime" aria-label="Minute">'+mins.map(function(x){return opt(pad(x),pad(x),x===tp[1])}).join("")+'</select>'+
+      '<select id="rt_p" data-f="rtime" aria-label="AM or PM">'+opt("AM","AM",tp[0]<12)+opt("PM","PM",tp[0]>=12)+'</select></div></div>';
     h+='<div style="display:grid;gap:8px;margin-top:12px">';
     if(S.pushOn)h+='<button class="btn alt sm" data-act="pushtest"'+(S.pushBusy?" disabled":"")+'>Send a test notification</button><button class="btn alt sm" data-act="pushoff"'+(S.pushBusy?" disabled":"")+'>Turn reminders off</button>';
     else h+='<button class="btn" data-act="pushon"'+(S.pushBusy?" disabled":"")+'>'+(S.pushBusy?"Working…":"Turn on reminders")+'</button><button class="btn alt sm" data-act="pushtest"'+(S.pushBusy?" disabled":"")+'>Send a test notification</button>';
@@ -1958,7 +1967,8 @@ function onField(t){
   if(f==="chatText"){S.chatText=t.value;return}
   if(f==="loginText"){S.loginText=t.value;return}
   if(f==="rtime"){
-    if(/^\d\d:\d\d$/.test(t.value)){S.rtime=t.value;save();clearTimeout(SYNCT2);SYNCT2=setTimeout(pushSync,700)}
+    var rh=document.getElementById("rt_h"),rm=document.getElementById("rt_m"),rp=document.getElementById("rt_p");
+    if(rh&&rm&&rp){S.rtime=pad((Number(rh.value)%12)+(rp.value==="PM"?12:0))+":"+rm.value;save();clearTimeout(SYNCT2);SYNCT2=setTimeout(pushSync,700)}
     return;
   }
   if(S.checkin&&(f==="rhr"||f==="rnotes")){
