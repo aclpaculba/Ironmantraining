@@ -5,7 +5,7 @@
       "type": "node",
       "request": "launch",
       "name": "Run Raceplan",
-      "program": "${workspaceFolder}/server.js",
+      "program": "${workspaceFolder}/dev-server.js",
       "console": "integratedTerminal"
     }
   ]

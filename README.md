@@ -27,7 +27,7 @@ You need Node.js 18 or newer (https://nodejs.org).
    (or press F5 and choose "Run Raceplan").
 4. Open http://localhost:3000 in your browser.
 
-Use `npm run dev` to restart the server automatically when you edit `server.js` or `api/coach.js`. For changes to `index.html`, just refresh the browser.
+Use `npm run dev` to restart the server automatically when you edit `dev-server.js` or `api/coach.js`. For changes to `index.html`, just refresh the browser.
 
 If you open `index.html` straight from disk, the planner still works but the coach cannot answer, because it needs the server.
 
@@ -84,7 +84,7 @@ Reminders arrive on days with a workout, at your chosen time. Open the app now a
 | --- | --- |
 | `index.html` | The whole app: onboarding, plan generator, workouts, check-in, coach chat. No build step. |
 | `api/coach.js` | The coach endpoint. Builds the prompt and calls DeepSeek. Contains the coach's system prompt. |
-| `server.js` | Tiny local server that serves the app and runs the `api/` functions. |
+| `dev-server.js` | Local-only dev server (not used on Vercel) that serves the app and runs the `api/` functions. |
 | `api/push.js`, `api/cron.js` | Save your phone for reminders, and send the daily reminder. |
 | `sw.js`, `manifest.webmanifest`, `icons/` | Make the app installable and show notifications. |
 | `supabase.sql` | Creates the reminders table. |
