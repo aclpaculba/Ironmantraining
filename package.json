@@ -1,0 +1,15 @@
+{
+  "name": "raceplan",
+  "version": "1.0.0",
+  "description": "Triathlon and running training planner with an in-app AI coach (DeepSeek).",
+  "private": true,
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "web-push": "^3.6.7"
+  },
+  "engines": { "node": ">=18" }
+}
