@@ -319,6 +319,8 @@ button.sel-card:active{transform:scale(.99)}
 .fld{display:block;margin:16px 0 0;font-weight:600;font-size:15px}
 .fld small{display:block;color:var(--mute);font-weight:400}
 .fld input,.fld select,.ta{display:block;width:100%;margin-top:6px;padding:12px 13px;border-radius:12px;border:1.5px solid var(--line2);background:var(--card)}
+.fld input[type=time]{-webkit-appearance:none;appearance:none;min-width:0;max-width:100%;height:48px;line-height:1.2;text-align:left}
+.fld input[type=time]::-webkit-date-and-time-value{text-align:left;margin:0;min-height:1.2em}
 .fld input:focus,.ta:focus{border-color:var(--swim);outline:none;box-shadow:0 0 0 3px color-mix(in srgb,var(--swim) 22%,transparent)}
 .ta{min-height:150px;font:13px/1.4 ui-monospace,Menlo,Consolas,monospace;resize:vertical}
 .row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
@@ -1781,6 +1783,7 @@ function pushOff(){
 }
 function pushTest(){
   if(S.pushBusy)return;
+  if(!S.pushOn){pushOn();return} // reminders are off: turning them on also sends a test
   S.pushBusy=true;S.pushMsg="";render();
   navigator.serviceWorker.ready.then(function(reg){return reg.pushManager.getSubscription()}).then(function(sub){
     if(!sub)throw new Error("Reminders are not on yet.");
@@ -1807,7 +1810,7 @@ function pushPanel(){
     h+='<label class="fld" style="margin:12px 0 0">Reminder time<input id="rtime" type="time" data-f="rtime" value="'+esc(S.rtime)+'"></label>';
     h+='<div style="display:grid;gap:8px;margin-top:12px">';
     if(S.pushOn)h+='<button class="btn alt sm" data-act="pushtest"'+(S.pushBusy?" disabled":"")+'>Send a test notification</button><button class="btn alt sm" data-act="pushoff"'+(S.pushBusy?" disabled":"")+'>Turn reminders off</button>';
-    else h+='<button class="btn" data-act="pushon"'+(S.pushBusy?" disabled":"")+'>'+(S.pushBusy?"Working…":"Turn on reminders")+'</button>';
+    else h+='<button class="btn" data-act="pushon"'+(S.pushBusy?" disabled":"")+'>'+(S.pushBusy?"Working…":"Turn on reminders")+'</button><button class="btn alt sm" data-act="pushtest"'+(S.pushBusy?" disabled":"")+'>Send a test notification</button>';
     h+='</div>';
   }
   if(S.pushMsg)h+='<div class="note" style="margin:10px 0 0">'+esc(S.pushMsg)+'</div>';
