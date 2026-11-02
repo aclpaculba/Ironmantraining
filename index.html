@@ -320,6 +320,8 @@ button.sel-card:active{transform:scale(.99)}
 .fld small{display:block;color:var(--mute);font-weight:400}
 .fld input,.fld select,.ta{display:block;width:100%;margin-top:6px;padding:12px 13px;border-radius:12px;border:1.5px solid var(--line2);background:var(--card)}
 .tsel{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:6px}
+.tsel.rm{grid-template-columns:1fr 1fr 1fr 44px}
+.trm{border:1.5px solid var(--line2);background:var(--card);color:var(--mute);border-radius:12px;font-size:22px;line-height:1;padding:0;height:100%}
 .tsel select{min-width:0;margin:0;text-align:center;text-align-last:center}
 .fld input[type=time]{-webkit-appearance:none;appearance:none;min-width:0;max-width:100%;height:48px;line-height:1.2;text-align:left}
 .fld input[type=time]::-webkit-date-and-time-value{text-align:left;margin:0;min-height:1.2em}
@@ -425,7 +427,7 @@ function durHtml(sec){
   return "<b>"+h+"</b> hr"+(r?" <b>"+r+"</b> mins":"");
 }
 
-var S={user:"",display:"",ts:0,loginText:"",loginErr:"",loginBusy:false,leaving:false,profile:null,done:{},ready:{},chat:{},cc:[],rtime:"07:00",pushOn:false,pushCfg:null,pushBusy:false,pushMsg:"",ptab:"you",chatBusy:false,chatText:"",chatQ:"",tab:"plan",week:0,sel:null,open:null,checkin:null,step:0,draft:null,err:"",editing:false,confirm:false,askText:"",busy:null,coachErr:"",needPass:false,pass:"",coachStatus:null,anim:false,pop:false};
+var S={user:"",display:"",ts:0,loginText:"",loginErr:"",loginBusy:false,leaving:false,profile:null,done:{},ready:{},chat:{},cc:[],rtimes:["07:00"],pushOn:false,pushCfg:null,pushBusy:false,pushMsg:"",ptab:"you",chatBusy:false,chatText:"",chatQ:"",tab:"plan",week:0,sel:null,open:null,checkin:null,step:0,draft:null,err:"",editing:false,confirm:false,askText:"",busy:null,coachErr:"",needPass:false,pass:"",coachStatus:null,anim:false,pop:false};
 var PLAN=null,ZC=null;
 
 /* ============ races (snapshot taken 28 Oct 2026) ============ */
@@ -963,10 +965,16 @@ function finalize(d){
 }
 
 /* Each username has its own data. It is kept in this browser and mirrored to the server (api/user). */
+/* Up to 5 reminder times a day, as "HH:MM", sorted, no duplicates. */
+function cleanTimes(a){
+  var l=(Array.isArray(a)?a:[]).filter(function(x){return /^([01]\d|2[0-3]):[0-5]\d$/.test(x||"")});
+  l=l.filter(function(x,i){return l.indexOf(x)===i}).sort().slice(0,5);
+  return l.length?l:["07:00"];
+}
 function ukey(){return KEY+".u."+S.user}
 function applyData(o){
   S.profile=o.profile||null;S.done=o.done||{};S.ready=o.ready||{};S.chat=o.chat||{};S.cc=Array.isArray(o.cc)?o.cc:[];
-  S.rtime=/^\d\d:\d\d$/.test(o.rtime||"")?o.rtime:"07:00";S.ts=Number(o.ts)||0;
+  S.rtimes=cleanTimes(o.rtimes||[o.rtime]);S.ts=Number(o.ts)||0;
   PLAN=null;
 }
 function clearData(){applyData({});S.tab="plan";S.ptab="you";S.open=null;S.checkin=null;S.sel=null;S.editing=false;S.confirm=false;S.draft=null;S.step=0;S.week=0;S.pushOn=false;S.pushMsg="";S.coachErr="";S.askText="";S.chatText=""}
@@ -976,7 +984,7 @@ function load(){
   if(S.user){var o=readLocal();if(o)applyData(o)}
   try{S.pass=localStorage.getItem(KEY+".pass")||""}catch(e){}
 }
-function snapshot(){return {profile:S.profile,done:S.done,ready:S.ready,chat:pruneChat(),cc:S.cc,rtime:S.rtime,ts:S.ts}}
+function snapshot(){return {profile:S.profile,done:S.done,ready:S.ready,chat:pruneChat(),cc:S.cc,rtimes:S.rtimes,ts:S.ts}}
 
 var SYNCTO=null;
 function save(){
@@ -1012,7 +1020,7 @@ function pullUser(){
     applyData(Object.assign({},j.data,{ts:j.ts}));
     try{localStorage.setItem(ukey(),JSON.stringify(snapshot()))}catch(e){}
     if(S.profile){S.draft=null;try{S.week=todayWeek(plan())}catch(e){S.week=0}}
-    render();
+    render();tryLink();
   }).catch(function(){});
 }
 
@@ -1696,6 +1704,7 @@ function finishLogin(username,display,data,ts){
   if(migrate)save();else if(S.profile&&S.ts>st)syncUp();
   window.scrollTo(0,0);
   pushInit();
+  tryLink();
 }
 function pushCleanup(){
   if(!("serviceWorker" in navigator)||!/^https?:$/.test(location.protocol))return Promise.resolve();
@@ -1715,6 +1724,26 @@ function doLogout(){
   });
 }
 
+/* ============ open a workout from a notification link (?open=YYYY-MM-DD) ============ */
+var LINKOPEN="";
+function openDay(date){
+  var P=plan(),w=findW(P,date);
+  S.tab="plan";S.checkin=null;S.editing=false;
+  if(w&&w.sections){
+    S.open=date;S.sel=date;S.pop=true;S.coachErr="";S.askText="";
+    var wi=0;P.weeks.forEach(function(wk,i){if(wk.days.some(function(x){return x.date===date}))wi=i});S.week=wi;
+  } else {try{S.week=todayWeek(P)}catch(e){}}
+  render();window.scrollTo(0,0);
+}
+function tryLink(){
+  if(!LINKOPEN||!S.user||!S.profile||S.editing)return;
+  var d=LINKOPEN;LINKOPEN="";openDay(d);
+}
+function linkFrom(url){
+  var m=String(url||"").match(/[?&]open=(\d{4}-\d{2}-\d{2})/);
+  if(m)LINKOPEN=m[1];
+}
+
 /* ============ reminders (web push) ============ */
 var SYNCT=null,SYNCT2=null;
 function pushEnv(){
@@ -1732,14 +1761,14 @@ function upcomingDays(){
   var P=plan(),tk=dkey(sod(new Date())),end=dkey(new Date(Date.now()+28*864e5)),o={};
   allW(P).forEach(function(w){
     if(w.date<tk||w.date>end)return;
-    o[w.date]={t:w.title,s:[w.mins?fmtMin(w.mins):"",w.sub||""].filter(Boolean).join(" · ")};
+    o[w.date]={t:w.title,s:[w.mins?fmtMin(w.mins):"",w.sub||""].filter(Boolean).join(" · "),d:S.done[w.date]?1:0};
   });
   return o;
 }
 function postPush(action,sub){
   var headers={"Content-Type":"application/json"};if(S.pass)headers["x-app-passcode"]=S.pass;
   var body={action:action,subscription:sub.toJSON?sub.toJSON():sub};
-  if(action==="subscribe"||action==="update"){body.tz=Intl.DateTimeFormat().resolvedOptions().timeZone;body.time=S.rtime;body.days=upcomingDays()}
+  if(action==="subscribe"||action==="update"){body.tz=Intl.DateTimeFormat().resolvedOptions().timeZone;body.times=S.rtimes;body.days=upcomingDays()}
   return fetch("api/push",{method:"POST",headers:headers,body:JSON.stringify(body)}).then(function(r){
     return r.json().catch(function(){return {}}).then(function(j){
       if(r.status===401){S.needPass=true;throw new Error("Enter your passcode in the Coach tab first.")}
@@ -1793,11 +1822,11 @@ function pushTest(){
   }).then(function(){S.pushMsg="Test sent. It should arrive in a few seconds."}).catch(function(e){S.pushMsg=(e&&e.message)||"Could not send a test."})
   .then(function(){S.pushBusy=false;render()});
 }
-function pushSync(){
+function pushSync(quiet){
   if(!S.pushOn||!S.profile)return;
   navigator.serviceWorker.ready.then(function(reg){return reg.pushManager.getSubscription()}).then(function(sub){
-    if(sub)return postPush("update",sub).then(function(){S.pushMsg="Reminder time saved.";if(S.tab==="prof"&&S.ptab==="set"&&!S.open)render()});
-  }).catch(function(e){S.pushMsg=(e&&e.message)||"Could not save the reminder time.";if(S.tab==="prof"&&S.ptab==="set"&&!S.open)render()});
+    if(sub)return postPush("update",sub).then(function(){if(quiet===true)return;S.pushMsg="Reminders saved.";if(S.tab==="prof"&&S.ptab==="set"&&!S.open)render()});
+  }).catch(function(e){if(quiet===true)return;S.pushMsg=(e&&e.message)||"Could not save your reminders.";if(S.tab==="prof"&&S.ptab==="set"&&!S.open)render()});
 }
 function pushPanel(){
   var env=pushEnv(),cfg=S.pushCfg,h='<div class="sec">Reminders</div><div class="panel" style="padding:14px 16px">',note=function(t){return '<div class="note" style="margin:0">'+t+'</div>'};
@@ -1808,15 +1837,21 @@ function pushPanel(){
   else if(!cfg.vapid||!cfg.store)h+=note("Reminders are not set up on the server yet. Add the VAPID keys and Supabase settings, then redeploy (see the README).");
   else if(env.perm==="denied")h+=note("Notifications are blocked for Raceplan. On iPhone open Settings, then Notifications, then Raceplan, and turn on Allow Notifications.");
   else{
-    h+=note("Get a note each morning with today’s workout, on your training days.");
-    var tp=S.rtime.split(":").map(Number),h12=tp[0]%12||12,mins=[];
-    for(var mi=0;mi<60;mi+=5)mins.push(mi);
-    if(mins.indexOf(tp[1])<0){mins.push(tp[1]);mins.sort(function(a,b){return a-b})}
+    h+=note("Get a note on your training days with today’s workout. Tap it to open that workout. Add up to 5 times a day: later ones only arrive if you haven’t marked the workout done.");
     var opt=function(v,lab,on){return '<option value="'+v+'"'+(on?" selected":"")+'>'+lab+'</option>'};
-    h+='<div class="fld" style="margin:12px 0 0">Reminder time<div class="tsel">'+
-      '<select id="rt_h" data-f="rtime" aria-label="Hour">'+[1,2,3,4,5,6,7,8,9,10,11,12].map(function(x){return opt(x,x,x===h12)}).join("")+'</select>'+
-      '<select id="rt_m" data-f="rtime" aria-label="Minute">'+mins.map(function(x){return opt(pad(x),pad(x),x===tp[1])}).join("")+'</select>'+
-      '<select id="rt_p" data-f="rtime" aria-label="AM or PM">'+opt("AM","AM",tp[0]<12)+opt("PM","PM",tp[0]>=12)+'</select></div></div>';
+    h+='<div class="fld" style="margin:12px 0 0">Reminder times';
+    S.rtimes.forEach(function(t,i){
+      var tp=t.split(":").map(Number),h12=tp[0]%12||12,mins=[];
+      for(var mi=0;mi<60;mi+=5)mins.push(mi);
+      if(mins.indexOf(tp[1])<0){mins.push(tp[1]);mins.sort(function(a,b){return a-b})}
+      h+='<div class="tsel'+(S.rtimes.length>1?' rm':'')+'">'+
+        '<select id="rt_h'+i+'" data-f="rtime" aria-label="Hour">'+[1,2,3,4,5,6,7,8,9,10,11,12].map(function(x){return opt(x,x,x===h12)}).join("")+'</select>'+
+        '<select id="rt_m'+i+'" data-f="rtime" aria-label="Minute">'+mins.map(function(x){return opt(pad(x),pad(x),x===tp[1])}).join("")+'</select>'+
+        '<select id="rt_p'+i+'" data-f="rtime" aria-label="AM or PM">'+opt("AM","AM",tp[0]<12)+opt("PM","PM",tp[0]>=12)+'</select>'+
+        (S.rtimes.length>1?'<button class="trm" data-act="rmtime" data-i="'+i+'" aria-label="Remove this reminder">×</button>':'')+'</div>';
+    });
+    h+='</div>';
+    if(S.rtimes.length<5)h+='<button class="btn alt sm" style="margin-top:10px" data-act="addtime">Add another reminder</button>';
     h+='<div style="display:grid;gap:8px;margin-top:12px">';
     if(S.pushOn)h+='<button class="btn alt sm" data-act="pushtest"'+(S.pushBusy?" disabled":"")+'>Send a test notification</button><button class="btn alt sm" data-act="pushoff"'+(S.pushBusy?" disabled":"")+'>Turn reminders off</button>';
     else h+='<button class="btn" data-act="pushon"'+(S.pushBusy?" disabled":"")+'>'+(S.pushBusy?"Working…":"Turn on reminders")+'</button><button class="btn alt sm" data-act="pushtest"'+(S.pushBusy?" disabled":"")+'>Send a test notification</button>';
@@ -1904,6 +1939,8 @@ function act(a,ds){
     case "ptab":S.ptab=ds.v;window.scrollTo(0,0);break;
     case "login":doLogin();return;
     case "logout":doLogout();return;
+    case "addtime":{var pre=["07:00","12:00","17:00","20:00","09:00","15:00"],nt=pre.filter(function(x){return S.rtimes.indexOf(x)<0})[0]||"18:00";S.rtimes=cleanTimes(S.rtimes.concat(nt));save();clearTimeout(SYNCT2);SYNCT2=setTimeout(pushSync,700);break}
+    case "rmtime":{S.rtimes=cleanTimes(S.rtimes.filter(function(x,i){return i!==Number(ds.i)}));save();clearTimeout(SYNCT2);SYNCT2=setTimeout(pushSync,700);break}
     case "pushon":pushOn();return;
     case "pushoff":pushOff();return;
     case "pushtest":pushTest();return;
@@ -1917,8 +1954,8 @@ function act(a,ds){
     case "open":S.open=ds.k;S.pop=true;S.coachErr="";S.askText="";break;
     case "close":S.open=null;S.checkin=null;break;
     case "nav":{var list=allW(plan()),ix=-1;list.forEach(function(x,i){if(x.date===S.open)ix=i});var n=list[ix+Number(ds.d)];if(n){S.open=n.date;S.sel=n.date;S.coachErr="";S.askText="";var wi=0;plan().weeks.forEach(function(wk,i){if(wk.days.some(function(x){return x.date===n.date}))wi=i});S.week=wi}break}
-    case "done":{var was=!!S.done[ds.k];if(was)delete S.done[ds.k];else S.done[ds.k]=1;save();PENDING=[was?"Marked not done":"Marked as done",ds.k];break}
-    case "undo":if(S.done[ds.k])delete S.done[ds.k];else S.done[ds.k]=1;save();break;
+    case "done":{var was=!!S.done[ds.k];if(was)delete S.done[ds.k];else S.done[ds.k]=1;save();clearTimeout(SYNCT2);SYNCT2=setTimeout(function(){pushSync(true)},1500);PENDING=[was?"Marked not done":"Marked as done",ds.k];break}
+    case "undo":if(S.done[ds.k])delete S.done[ds.k];else S.done[ds.k]=1;save();clearTimeout(SYNCT2);SYNCT2=setTimeout(function(){pushSync(true)},1500);break;
     case "copyw":{var wk2=findW(plan(),ds.k);if(wk2){var ok=copyText(workoutText(wk2,plan()));toast(ok?"Workout copied":"Copy was blocked on this device")}return}
     case "checkin":S.checkin={date:ds.k,r:clone(S.ready[ds.k]||{})};S.pop=true;break;
     case "rset":S.checkin.r[ds.k]=Number(ds.v);break;
@@ -1967,8 +2004,15 @@ function onField(t){
   if(f==="chatText"){S.chatText=t.value;return}
   if(f==="loginText"){S.loginText=t.value;return}
   if(f==="rtime"){
-    var rh=document.getElementById("rt_h"),rm=document.getElementById("rt_m"),rp=document.getElementById("rt_p");
-    if(rh&&rm&&rp){S.rtime=pad((Number(rh.value)%12)+(rp.value==="PM"?12:0))+":"+rm.value;save();clearTimeout(SYNCT2);SYNCT2=setTimeout(pushSync,700)}
+    var list=[];
+    for(var ri=0;ri<S.rtimes.length;ri++){
+      var rh=document.getElementById("rt_h"+ri),rm=document.getElementById("rt_m"+ri),rp=document.getElementById("rt_p"+ri);
+      if(!rh||!rm||!rp)return;
+      list.push(pad((Number(rh.value)%12)+(rp.value==="PM"?12:0))+":"+rm.value);
+    }
+    var nl=cleanTimes(list),changed=nl.join()!==list.join();
+    S.rtimes=nl;save();clearTimeout(SYNCT2);SYNCT2=setTimeout(pushSync,700);
+    if(changed)render(); // sorted order or a duplicate changed the rows
     return;
   }
   if(S.checkin&&(f==="rhr"||f==="rnotes")){
@@ -1997,7 +2041,11 @@ function init(){
     if(document.visibilityState==="hidden"){if(SYNCTO)syncUp(true)}
     else pullUser();
   });
+  linkFrom(location.search);
+  try{if(LINKOPEN&&history.replaceState)history.replaceState(null,"",location.pathname)}catch(e){}
+  if("serviceWorker" in navigator)navigator.serviceWorker.addEventListener("message",function(e){if(e.data&&e.data.type==="open"){linkFrom(e.data.url);tryLink()}});
   render();
+  tryLink();
   pushInit();
   pullUser();
 }

@@ -1,8 +1,11 @@
 "use strict";
 /*
- * Sends the morning reminders. Call it every 15 minutes (see the README).
+ * Sends the workout reminders. Call it every 15 minutes (see the README).
  * Auth: send CRON_SECRET as "Authorization: Bearer <secret>" or ?secret=<secret>.
- * A subscription gets one reminder per local day, once its reminder time has passed (within a 3 hour window).
+ * Each subscription has up to 5 reminder times a day (remind_time is "07:00,12:30,18:00").
+ * A time is sent once per local day, within 3 hours after it passes. If several are due at once, only the latest is sent.
+ * If the workout is already marked done, nothing is sent.
+ * last_sent_date holds "YYYY-MM-DD|07:00,12:30" (the times already handled today).
  */
 const { safeEqual, sb, webpush } = require("../lib/common.js");
 
@@ -11,6 +14,7 @@ function localNow(tz) {
   const g = (t) => p.find((x) => x.type === t).value;
   return { date: g("year") + "-" + g("month") + "-" + g("day"), min: Number(g("hour")) * 60 + Number(g("minute")) };
 }
+function mins(t) { const [h, m] = t.split(":").map(Number); return h * 60 + m; }
 
 module.exports = async function handler(req, res) {
   res.setHeader("Cache-Control", "no-store");
@@ -29,14 +33,27 @@ module.exports = async function handler(req, res) {
       result.checked++;
       let now;
       try { now = localNow(row.tz); } catch (e) { continue; }
-      const [hh, mm] = String(row.remind_time).split(":").map(Number);
-      const since = now.min - (hh * 60 + mm);
-      if (since < 0 || since > 180 || row.last_sent_date === now.date) continue;
+      const parts = String(row.last_sent_date || "").split("|");
+      const handled = parts[0] === now.date ? (parts[1] ? parts[1].split(",") : (parts.length === 1 ? ["*"] : [])) : [];
+      if (handled.indexOf("*") >= 0) continue; // old single-time format: already sent today
+      const due = String(row.remind_time).split(",").filter((t) => /^\d\d:\d\d$/.test(t)).filter((t) => {
+        const since = now.min - mins(t);
+        return since >= 0 && since <= 180 && handled.indexOf(t) < 0;
+      }).sort();
+      if (!due.length) continue;
       const day = row.days && row.days[now.date];
-      if (!day) continue; // rest day, or the app has not been opened lately enough to know today's plan
+      if (!day || day.d) continue; // rest day, nothing known for today, or already done
+      const all = String(row.remind_time).split(",").filter(Boolean).sort();
+      const first = due[due.length - 1] === all[0];
+      const payload = JSON.stringify({
+        title: (first ? "Today: " : "Reminder: ") + day.t,
+        body: (first ? "" : "Not done yet. ") + (day.s || "Tap to open today's workout."),
+        tag: "raceplan-daily",
+        url: "./?open=" + now.date
+      });
       try {
-        await wp.sendNotification(row.subscription, JSON.stringify({ title: "Today: " + day.t, body: day.s || "Open Raceplan for the full session.", tag: "raceplan-daily", url: "./" }));
-        await sb("push_subscriptions?endpoint=eq." + encodeURIComponent(row.endpoint), { method: "PATCH", body: { last_sent_date: now.date } });
+        await wp.sendNotification(row.subscription, payload);
+        await sb("push_subscriptions?endpoint=eq." + encodeURIComponent(row.endpoint), { method: "PATCH", body: { last_sent_date: now.date + "|" + handled.concat(due).join(",") } });
         result.sent++;
       } catch (e) {
         if (e && (e.statusCode === 404 || e.statusCode === 410)) {

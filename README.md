@@ -76,7 +76,7 @@ Vercel Hobby cron only runs once a day, so use a free external scheduler to call
 4. Go to Profile, Settings, Reminders. Pick a time and tap **Turn on reminders**. Allow notifications and a test notification arrives.
 5. Enter your passcode in the Coach tab the first time you use the coach or reminders if you set `APP_PASSCODE`.
 
-Reminders arrive on days with a workout, at your chosen time. Open the app now and then: it refreshes your next four weeks of workouts on the server each time you use it, and reminders stop when that copy runs out.
+Reminders arrive on days with a workout, at up to 5 times you choose. Later ones are skipped once you mark the workout done, and tapping a reminder opens that day's workout. Open the app now and then: it refreshes your next four weeks of workouts on the server each time you use it, and reminders stop when that copy runs out.
 
 ## Files
 

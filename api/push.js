@@ -8,12 +8,19 @@ const { safeEqual, readJson, sb, webpush, okEndpoint } = require("../lib/common.
 
 function validTz(tz) { try { new Intl.DateTimeFormat("en", { timeZone: tz }); return true; } catch (e) { return false; } }
 
+// Up to 5 reminder times a day, as "HH:MM", sorted, no duplicates. Stored comma-separated in remind_time.
+function cleanTimes(t, single) {
+  const list = (Array.isArray(t) ? t : [single]).map(String).filter((x) => /^([01]\d|2[0-3]):[0-5]\d$/.test(x));
+  const out = Array.from(new Set(list)).sort().slice(0, 5);
+  return out.length ? out : ["07:00"];
+}
+
 function cleanDays(d) {
   const out = {};
   if (!d || typeof d !== "object") return out;
   Object.keys(d).slice(0, 40).forEach((k) => {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(k) || !d[k]) return;
-    out[k] = { t: String(d[k].t || "").slice(0, 80), s: String(d[k].s || "").slice(0, 140) };
+    out[k] = { t: String(d[k].t || "").slice(0, 80), s: String(d[k].s || "").slice(0, 140), d: d[k].d ? 1 : 0 };
   });
   return out;
 }
@@ -42,7 +49,7 @@ module.exports = async function handler(req, res) {
     }
     if (b.action === "subscribe" || b.action === "update") {
       const tz = validTz(b.tz) ? b.tz : "UTC";
-      const time = /^([01]\d|2[0-3]):[0-5]\d$/.test(b.time || "") ? b.time : "07:00";
+      const time = cleanTimes(b.times, b.time).join(",");
       await sb("push_subscriptions?on_conflict=endpoint", {
         method: "POST",
         headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
@@ -51,7 +58,7 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({ ok: true });
     }
     if (b.action === "test") {
-      await webpush().sendNotification(sub, JSON.stringify({ title: "Raceplan reminders are on", body: "You will get a note like this each morning on your training days.", tag: "raceplan-test", url: "./" }));
+      await webpush().sendNotification(sub, JSON.stringify({ title: "Raceplan reminders are on", body: "You will get a note like this on your training days. Tap it to open today's workout.", tag: "raceplan-test", url: "./" }));
       return res.status(200).json({ ok: true });
     }
     return res.status(400).json({ error: "bad_request", message: "Unknown action." });
