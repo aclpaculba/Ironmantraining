@@ -17,7 +17,7 @@ try {
 
 const PORT = Number(process.env.PORT || 3000);
 const HANDLERS = {};
-["coach", "push", "cron"].forEach((n) => { HANDLERS[n] = require("./api/" + n + ".js"); });
+["coach", "push", "cron", "user"].forEach((n) => { HANDLERS[n] = require("./api/" + n + ".js"); });
 
 // Only these files are served as static assets.
 const STATIC = {

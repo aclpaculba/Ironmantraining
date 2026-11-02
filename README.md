@@ -42,7 +42,7 @@ Your phone must reach your computer. On the same Wi-Fi, find your computer's loc
 2. In a terminal inside this folder run: `git init`, `git add .`, `git commit -m "Raceplan"`, then the `git remote add origin ...` and `git push -u origin main` commands GitHub shows you. The `.gitignore` keeps `.env` out. Never commit your keys.
 
 ### 2. Create the reminders table in Supabase
-1. Open your Supabase project, go to SQL Editor, paste the contents of `supabase.sql`, and run it.
+1. Open your Supabase project, go to SQL Editor, paste the contents of `supabase.sql`, and run it. It creates two tables: `app_users` (one row per username, holding that user's plan, check-ins and coach chats) and `push_subscriptions` (reminders).
 2. Go to Project Settings, API. Copy the **Project URL** and the **service_role** key (the secret one, never put it in the app code).
 
 ### 3. Import into Vercel

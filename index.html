@@ -421,7 +421,7 @@ function durHtml(sec){
   return "<b>"+h+"</b> hr"+(r?" <b>"+r+"</b> mins":"");
 }
 
-var S={profile:null,done:{},ready:{},chat:{},cc:[],rtime:"07:00",pushOn:false,pushCfg:null,pushBusy:false,pushMsg:"",ptab:"you",chatBusy:false,chatText:"",chatQ:"",tab:"plan",week:0,sel:null,open:null,checkin:null,step:0,draft:null,err:"",editing:false,confirm:false,askText:"",busy:null,coachErr:"",needPass:false,pass:"",coachStatus:null,anim:false,pop:false};
+var S={user:"",display:"",ts:0,loginText:"",loginErr:"",loginBusy:false,leaving:false,profile:null,done:{},ready:{},chat:{},cc:[],rtime:"07:00",pushOn:false,pushCfg:null,pushBusy:false,pushMsg:"",ptab:"you",chatBusy:false,chatText:"",chatQ:"",tab:"plan",week:0,sel:null,open:null,checkin:null,step:0,draft:null,err:"",editing:false,confirm:false,askText:"",busy:null,coachErr:"",needPass:false,pass:"",coachStatus:null,anim:false,pop:false};
 var PLAN=null,ZC=null;
 
 /* ============ races (snapshot taken 28 Oct 2026) ============ */
@@ -958,12 +958,59 @@ function finalize(d){
     startDate:dkey(monOf(new Date())),draft:clone(d)};
 }
 
+/* Each username has its own data. It is kept in this browser and mirrored to the server (api/user). */
+function ukey(){return KEY+".u."+S.user}
+function applyData(o){
+  S.profile=o.profile||null;S.done=o.done||{};S.ready=o.ready||{};S.chat=o.chat||{};S.cc=Array.isArray(o.cc)?o.cc:[];
+  S.rtime=/^\d\d:\d\d$/.test(o.rtime||"")?o.rtime:"07:00";S.ts=Number(o.ts)||0;
+  PLAN=null;
+}
+function clearData(){applyData({});S.tab="plan";S.ptab="you";S.open=null;S.checkin=null;S.sel=null;S.editing=false;S.confirm=false;S.draft=null;S.step=0;S.week=0;S.pushOn=false;S.pushMsg="";S.coachErr="";S.askText="";S.chatText=""}
+function readLocal(){try{var j=localStorage.getItem(ukey());return j?JSON.parse(j):null}catch(e){return null}}
 function load(){
-  try{var j=localStorage.getItem(KEY);if(j){var o=JSON.parse(j);S.profile=o.profile||null;S.done=o.done||{};S.ready=o.ready||{};S.chat=o.chat||{};S.cc=Array.isArray(o.cc)?o.cc:[];if(/^\d\d:\d\d$/.test(o.rtime||""))S.rtime=o.rtime}}catch(e){}
+  try{S.user=localStorage.getItem(KEY+".user")||"";S.display=localStorage.getItem(KEY+".disp")||S.user}catch(e){}
+  if(S.user){var o=readLocal();if(o)applyData(o)}
   try{S.pass=localStorage.getItem(KEY+".pass")||""}catch(e){}
 }
+function snapshot(){return {profile:S.profile,done:S.done,ready:S.ready,chat:pruneChat(),cc:S.cc,rtime:S.rtime,ts:S.ts}}
 
-function save(){try{localStorage.setItem(KEY,JSON.stringify({profile:S.profile,done:S.done,ready:S.ready,chat:pruneChat(),cc:S.cc,rtime:S.rtime}))}catch(e){}}
+var SYNCTO=null;
+function save(){
+  if(!S.user)return;
+  S.ts=Date.now();
+  try{localStorage.setItem(ukey(),JSON.stringify(snapshot()))}catch(e){}
+  clearTimeout(SYNCTO);SYNCTO=setTimeout(syncUp,800);
+}
+function userApi(body,keepalive){
+  var headers={"Content-Type":"application/json"};if(S.pass)headers["x-app-passcode"]=S.pass;
+  var payload=JSON.stringify(body);
+  return fetch("api/user",{method:"POST",headers:headers,body:payload,keepalive:!!keepalive&&payload.length<60000}).then(function(r){
+    return r.json().catch(function(){return {}}).then(function(j){
+      if(r.status===401){S.needPass=true}
+      if(!r.ok){var e=new Error(j.message||"Something went wrong. Try again.");e.code=r.status===401?"passcode":(j.error||"server");throw e}
+      return j;
+    });
+  });
+}
+function syncUp(keepalive){
+  clearTimeout(SYNCTO);SYNCTO=null;
+  if(!S.user)return Promise.resolve();
+  return userApi({action:"save",username:S.user,data:snapshot(),ts:S.ts},keepalive===true).catch(function(){});
+}
+/* On open: if the server has newer data (for example from another device), use it. */
+function pullUser(){
+  if(!S.user)return;
+  var who=S.user;
+  userApi({action:"get",username:who}).then(function(j){
+    if(S.user!==who)return;
+    var st=Number(j.ts)||0;
+    if(!j.data||st<=S.ts||S.editing){if(S.ts>st)syncUp();return}
+    applyData(Object.assign({},j.data,{ts:j.ts}));
+    try{localStorage.setItem(ukey(),JSON.stringify(snapshot()))}catch(e){}
+    if(S.profile){S.draft=null;try{S.week=todayWeek(plan())}catch(e){S.week=0}}
+    render();
+  }).catch(function(){});
+}
 
 function plan(){if(!PLAN)PLAN=buildPlan(S.profile);return PLAN}
 function todayWeek(P){return clamp(Math.floor(diffDays(new Date(),P.start)/7),0,P.N-1)}
@@ -1148,6 +1195,7 @@ function profView(P){
   if(Z.hrmax)h+='<div class="note">Heart-rate guides use '+(p.maxHR?'your max of ':'an estimated max of ')+Math.round(Z.hrmax)+' bpm.</div>';
   }
   if(S.ptab==="set"){
+  h+=accountPanel();
   h+=pushPanel();
   var cs=S.coachStatus,msg;
   if(!cs)msg="Checking the coach connection…";
@@ -1596,6 +1644,71 @@ function pingCoach(){
     if(S.tab==="prof"&&!S.open)render();
   }).catch(function(){S.coachStatus={state:"down"};if(S.tab==="prof"&&!S.open)render()});}
 
+/* ============ accounts (username only) ============ */
+function loginView(){
+  var h='<div class="top"><div class="in"><div class="brand">'+MARK+'Raceplan</div></div></div><main class="wrap"><div class="sec" style="margin-top:28px">Log in</div>';
+  h+='<p style="color:var(--mute);margin:0 0 14px">Type your username. A new name creates a new account. Your plan, check-ins and coach chats are saved to it, so you can log out and pick up where you left off.</p>';
+  h+='<label class="fld">Username<input id="loginin" data-f="loginText" value="'+esc(S.loginText)+'" maxlength="30" autocomplete="username" autocapitalize="words" autocorrect="off" spellcheck="false" placeholder="e.g. Anthony"'+(S.loginBusy?" disabled":"")+'></label>';
+  if(S.needPass)h+='<label class="fld">Passcode<input id="loginpass" type="password" autocomplete="current-password" placeholder="App passcode"></label>';
+  if(S.loginErr)h+='<div class="callout err" style="margin:12px 0 0">'+esc(S.loginErr)+'</div>';
+  h+='<button class="btn" style="margin-top:14px" data-act="login"'+(S.loginBusy?" disabled":"")+'>'+(S.loginBusy?"Logging in…":"Continue")+'</button>';
+  h+='<div class="note">There is no password. Anyone who types your username can open your plan, so pick one only you would use.</div></main>';
+  return h;
+}
+function accountPanel(){
+  return '<div class="sec">Account</div><div class="panel" style="padding:14px 16px"><div class="note" style="margin:0 0 10px">Signed in as <b>'+esc(S.display)+'</b>. Your data is saved to this name, so you can log out and come back to it.</div><button class="btn alt sm" data-act="logout"'+(S.leaving?" disabled":"")+'>'+(S.leaving?"Logging out…":"Log out")+'</button></div>';
+}
+function doLogin(){
+  var name=String(S.loginText||"").trim().replace(/\s+/g," ");
+  if(S.loginBusy)return;
+  if(!/^[A-Za-z0-9][A-Za-z0-9 _.-]{1,29}$/.test(name)){S.loginErr="Use 2 to 30 letters, numbers, spaces, dots, dashes or underscores.";render();return}
+  var pi=document.getElementById("loginpass");
+  if(pi&&pi.value){S.pass=pi.value;try{localStorage.setItem(KEY+".pass",S.pass)}catch(e){}}
+  S.loginBusy=true;S.loginErr="";render();
+  userApi({action:"login",username:name}).then(function(j){
+    finishLogin(j.username,j.display,j.data,j.ts);
+  }).catch(function(e){
+    // No server (opened from a file, offline, or accounts not set up yet): work on this device only.
+    if(e&&(e.name==="TypeError"||e.code==="not_configured"))finishLogin(name.toLowerCase(),name,null,0);
+    else S.loginErr=(e&&e.code==="passcode")?"Enter the passcode to continue.":((e&&e.message)||"Could not log in. Try again.");
+  }).then(function(){S.loginBusy=false;render()});
+}
+function finishLogin(username,display,data,ts){
+  S.user=username;S.display=display||username;
+  try{localStorage.setItem(KEY+".user",S.user);localStorage.setItem(KEY+".disp",S.display)}catch(e){}
+  clearData();
+  var local=readLocal(),best=null,migrate=false,st=Number(ts)||0;
+  if(data&&(!local||st>=(Number(local.ts)||0)))best=Object.assign({},data,{ts:st});
+  else if(local)best=local;
+  if(!best){
+    // New account: the first one on this browser adopts a plan saved before accounts existed.
+    try{var lj=localStorage.getItem(KEY);if(lj){var lo=JSON.parse(lj);if(lo&&lo.profile){best=lo;migrate=true;localStorage.removeItem(KEY)}}}catch(e){}
+  }
+  if(best)applyData(best);
+  if(S.profile){try{S.week=todayWeek(plan())}catch(e){S.week=0}}else S.draft=defaultDraft();
+  S.anim=true;S.loginText="";S.loginErr="";
+  if(migrate)save();else if(S.profile&&S.ts>st)syncUp();
+  window.scrollTo(0,0);
+  pushInit();
+}
+function pushCleanup(){
+  if(!("serviceWorker" in navigator)||!/^https?:$/.test(location.protocol))return Promise.resolve();
+  return navigator.serviceWorker.ready.then(function(reg){return reg.pushManager.getSubscription()}).then(function(sub){
+    if(!sub)return;
+    return postPush("unsubscribe",sub).catch(function(){}).then(function(){return sub.unsubscribe()});
+  }).catch(function(){});
+}
+function doLogout(){
+  if(S.leaving)return;
+  S.leaving=true;render();
+  var wait=new Promise(function(r){setTimeout(r,4000)});
+  Promise.race([Promise.all([syncUp(),pushCleanup()]),wait]).then(function(){
+    try{localStorage.removeItem(KEY+".user");localStorage.removeItem(KEY+".disp")}catch(e){}
+    S.user="";S.display="";S.ts=0;clearData();S.leaving=false;S.loginText="";S.loginErr="";
+    render();window.scrollTo(0,0);
+  });
+}
+
 /* ============ reminders (web push) ============ */
 var SYNCT=null,SYNCT2=null;
 function pushEnv(){
@@ -1735,7 +1848,7 @@ function render(){
   var app=$("#app"),sh=document.querySelector(".sheet:not(.two)"),st=sh?sh.scrollTop:0,ws=window.scrollY;
   var doAnim=!!(S.anim&&S.profile&&!S.editing&&S.tab==="plan");
   try{
-    if(!S.profile||S.editing)app.innerHTML=onboard();else app.innerHTML=mainView();
+    if(!S.user)app.innerHTML=loginView();else if(!S.profile||S.editing)app.innerHTML=onboard();else app.innerHTML=mainView();
   }catch(e){
     app.innerHTML='<main class="wrap"><div class="callout err">Something went wrong building the plan. '+esc(e&&e.message)+'</div><button class="btn" data-act="reset">Start over</button></main>';
   }
@@ -1775,6 +1888,8 @@ function act(a,ds){
   switch(a){
     case "tab":S.tab=ds.v;S.open=null;S.checkin=null;if(ds.v==="plan")S.anim=true;if(ds.v==="prof")pingCoach();if(ds.v==="coach"){CHATSCROLL=true;pingCoach()}window.scrollTo(0,0);break;
     case "ptab":S.ptab=ds.v;window.scrollTo(0,0);break;
+    case "login":doLogin();return;
+    case "logout":doLogout();return;
     case "pushon":pushOn();return;
     case "pushoff":pushOff();return;
     case "pushtest":pushTest();return;
@@ -1836,6 +1951,7 @@ function onField(t){
   var f=t.dataset.f;
   if(f==="askText"){S.askText=t.value;return}
   if(f==="chatText"){S.chatText=t.value;return}
+  if(f==="loginText"){S.loginText=t.value;return}
   if(f==="rtime"){
     if(/^\d\d:\d\d$/.test(t.value)){S.rtime=t.value;save();clearTimeout(SYNCT2);SYNCT2=setTimeout(pushSync,700)}
     return;
@@ -1859,10 +1975,16 @@ function init(){
   document.addEventListener("keydown",function(e){
     if(e.key==="Enter"&&e.target&&e.target.id==="askin"){e.preventDefault();act("askgo",{});return}
     if(e.key==="Enter"&&e.target&&e.target.id==="chatin"){e.preventDefault();act("askcgo",{});return}
+    if(e.key==="Enter"&&e.target&&(e.target.id==="loginin"||e.target.id==="loginpass")){e.preventDefault();act("login",{});return}
     if(e.key==="Escape"){if(S.checkin)act("rclose",{});else if(S.open)act("close",{})}
+  });
+  document.addEventListener("visibilitychange",function(){
+    if(document.visibilityState==="hidden"){if(SYNCTO)syncUp(true)}
+    else pullUser();
   });
   render();
   pushInit();
+  pullUser();
 }
 
 if(typeof document!=="undefined"&&document.getElementById&&document.getElementById("app"))init();
