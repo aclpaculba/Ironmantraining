@@ -1006,7 +1006,7 @@ function userApi(body,keepalive){
 }
 function syncUp(keepalive){
   clearTimeout(SYNCTO);SYNCTO=null;
-  if(!S.user)return Promise.resolve();
+  if(!S.user||!S.ts)return Promise.resolve(); // nothing has been saved for this account yet, so there is nothing to upload
   return userApi({action:"save",username:S.user,data:snapshot(),ts:S.ts},keepalive===true).catch(function(){});
 }
 /* On open: if the server has newer data (for example from another device), use it. */
@@ -1364,7 +1364,8 @@ function raceList(d){
 }
 
 function onboard(){
-  var d=S.draft,imp=d.units==="imperial",tri=isTri(d.goal),st=S.step,h='<div class="top"><div class="in"><div class="brand">'+MARK+'Raceplan</div>'+(S.editing?'<button class="linkbtn" data-act="cancel">Cancel</button>':'')+'</div></div><main class="wrap ob">';
+  var d=S.draft,imp=d.units==="imperial",tri=isTri(d.goal),st=S.step,h='<div class="top"><div class="in"><div class="brand">'+MARK+'Raceplan</div>'+(S.editing?'<button class="linkbtn" data-act="cancel">Cancel</button>':'<button class="linkbtn" data-act="logout"'+(S.leaving?' disabled':'')+'>'+(S.leaving?'Switching…':'Switch account')+'</button>')+'</div></div><main class="wrap ob">';
+  if(!S.editing)h+='<div class="note" style="margin:0 0 8px">Signed in as <b>'+esc(S.display)+'</b>. Wrong name? Tap Switch account.</div>';
   h+='<div class="steps">'+[0,1,2,3,4,5].map(function(i){return '<i class="'+(i<=st?"on":"")+'"></i>'}).join("")+'</div><div class="stp">Step '+(st+1)+' of 6</div>';
   if(S.err)h+='<div class="callout err" style="margin-top:10px">'+esc(S.err)+'</div>';
   var inclSwim=tri||d.swim,inclBike=tri||d.bike;
