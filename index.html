@@ -1668,8 +1668,10 @@ function doLogin(){
   userApi({action:"login",username:name}).then(function(j){
     finishLogin(j.username,j.display,j.data,j.ts);
   }).catch(function(e){
-    // No server (opened from a file, offline, or accounts not set up yet): work on this device only.
-    if(e&&(e.name==="TypeError"||e.code==="not_configured"))finishLogin(name.toLowerCase(),name,null,0);
+    // Local-only mode is for running on your own computer (or a file) without a server. On the hosted site, show the real problem.
+    var local=location.protocol==="file:"||location.hostname==="localhost"||location.hostname==="127.0.0.1";
+    if(e&&local&&(e.name==="TypeError"||e.code==="not_configured"))finishLogin(name.toLowerCase(),name,null,0);
+    else if(e&&e.name==="TypeError")S.loginErr="Can’t reach the server. Check your connection and try again.";
     else S.loginErr=(e&&e.code==="passcode")?"Enter the passcode to continue.":((e&&e.message)||"Could not log in. Try again.");
   }).then(function(){S.loginBusy=false;render()});
 }

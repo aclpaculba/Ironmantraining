@@ -19,6 +19,7 @@ const q = (s) => encodeURIComponent(s);
 module.exports = async function handler(req, res) {
   const pass = process.env.APP_PASSCODE;
   res.setHeader("Cache-Control", "no-store");
+  if (req.method === "GET") return res.status(200).json({ ok: true, store: !!(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY), needsPasscode: !!pass });
   if (req.method !== "POST") return res.status(405).json({ error: "method", message: "Use POST." });
   if (pass && !safeEqual(req.headers["x-app-passcode"] || "", pass)) return res.status(401).json({ error: "passcode", message: "Wrong or missing passcode." });
   if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) return res.status(500).json({ error: "not_configured", message: "Accounts are not set up on the server yet." });
@@ -58,6 +59,6 @@ module.exports = async function handler(req, res) {
     return res.status(400).json({ error: "bad_request", message: "Unknown action." });
   } catch (e) {
     console.error("user error", e && e.message);
-    return res.status(500).json({ error: "server", message: "Could not reach the data store. Check the Supabase setup (table app_users)." });
+    return res.status(500).json({ error: "server", detail: String(e && e.message), message: "Could not reach the data store (" + String(e && e.message) + "). Check that the app_users table exists and the Supabase URL and key are correct." });
   }
 };
